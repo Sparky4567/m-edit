@@ -481,7 +481,12 @@ class FileBrowser(Vertical):
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Search files...", id="search_input")
         yield Select(
-            [("Name (A-Z)", "name"), ("Date (Newest First)", "date")],
+            [
+                ("Name (A-Z)", "name"), 
+                ("Name (Z-A)", "name_rev"), 
+                ("Date (Newest First)", "date"),
+                ("Date (Oldest First)", "date_asc")
+            ],
             value="name",
             id="sort_select",
             allow_blank=False
@@ -590,7 +595,17 @@ class MEditApp(App):
 
     def on_mount(self) -> None:
         self.load_state()
-        self.load_files()
+        
+        search_val = getattr(self, "_initial_search", "")
+        sort_val = getattr(self, "_initial_sort", "name")
+        
+        try:
+            self.query_one("#search_input", Input).value = search_val
+            self.query_one("#sort_select", Select).value = sort_val
+        except Exception:
+            pass
+            
+        self.load_files(search_term=search_val, sort_by=sort_val)
         self.run_worker(self.load_ollama_models())
 
     def load_state(self) -> None:
@@ -604,8 +619,14 @@ class MEditApp(App):
                 saved_dir = data.get("working_directory")
                 if saved_dir and Path(saved_dir).is_dir():
                     self.working_directory = saved_dir
+                self._initial_search = data.get("search_term", "")
+                self._initial_sort = data.get("sort_by", "name")
             except Exception:
-                pass
+                self._initial_search = ""
+                self._initial_sort = "name"
+        else:
+            self._initial_search = ""
+            self._initial_sort = "name"
 
     def save_state(self) -> None:
         import platformdirs
@@ -613,8 +634,23 @@ class MEditApp(App):
         config_dir = Path(platformdirs.user_data_dir("m-edit"))
         config_dir.mkdir(parents=True, exist_ok=True)
         config_file = config_dir / "config.json"
+        
         try:
-            config_file.write_text(json.dumps({"working_directory": self.working_directory}))
+            search_val = self.query_one("#search_input", Input).value
+        except Exception:
+            search_val = getattr(self, "_initial_search", "")
+            
+        try:
+            sort_val = self.query_one("#sort_select", Select).value
+        except Exception:
+            sort_val = getattr(self, "_initial_sort", "name")
+            
+        try:
+            config_file.write_text(json.dumps({
+                "working_directory": self.working_directory,
+                "search_term": search_val,
+                "sort_by": sort_val
+            }))
         except Exception as e:
             self.notify(f"Error saving state: {e}", severity="warning")
 
@@ -671,8 +707,12 @@ class MEditApp(App):
                 
             if sort_by == "name":
                 paths.sort(key=lambda p: p.name.lower())
+            elif sort_by == "name_rev":
+                paths.sort(key=lambda p: p.name.lower(), reverse=True)
             elif sort_by == "date":
                 paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            elif sort_by == "date_asc":
+                paths.sort(key=lambda p: p.stat().st_mtime)
             return paths
 
         paths = await asyncio.to_thread(do_search)
@@ -695,11 +735,13 @@ class MEditApp(App):
         if event.input.id == "search_input":
             sort_val = self.query_one("#sort_select", Select).value
             self.load_files(search_term=event.value, sort_by=sort_val)
+            self.save_state()
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "sort_select":
             search_val = self.query_one("#search_input", Input).value
             self.load_files(search_term=search_val, sort_by=event.value)
+            self.save_state()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         pass
