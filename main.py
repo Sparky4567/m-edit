@@ -528,6 +528,7 @@ class MEditApp(App):
     Markdown {
         height: 1fr;
         padding: 1 2;
+        overflow-y: auto;
     }
     
     .file_label {
