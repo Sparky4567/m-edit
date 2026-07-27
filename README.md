@@ -36,17 +36,20 @@ uv run m-edit
     *   **Search Files:** Start typing in the search bar to filter the file list. The search looks through both the file names and the contents of the Markdown files.
     *   **Sort Files:** Use the dropdown menu below the search bar to sort files either alphabetically (A-Z) or by the newest modification date.
     *   **Select Model:** A dropdown under the sort menu lists all available Ollama models installed on your machine. Pick your favorite!
+    *   **Select System Description:** A dropdown list allowing you to switch the active bot system behavior on the fly.
     *   **Select Multiple Files:** Click the checkboxes next to files (or hit `Space` while focused on a checkbox) to select multiple files for AI compilation.
     *   **Open File:** Use your arrow keys (`↑` and `↓`) or the mouse to navigate the file list and hit `Enter` on the file name to open it.
 *   **Right Pane (Editor/Viewer):**
     *   **Preview Tab:** Displays the richly rendered Markdown of the currently selected file. You can click on the tab at the top to switch to it.
     *   **Edit Tab:** A text editor where you can make changes to the Markdown source. 
+    *   **System Prompts Tab:** Create, edit, delete, and manage custom system descriptions to describe how the bot should behave.
     *   **Folders Tab:** A built-in directory browser to explore your file system. You can type absolute or relative paths to instantly jump between folders, and click "Set as Working Directory" to load its contents into the sidebar. 
 
 ### Keyboard Shortcuts & Commands
 
 *   **`Ctrl+P`**: **Open the Command Palette.** From here you can access all application actions:
     *   **`Change Directory`**: Switches to the Folders tab where you can navigate to a new directory. `m-edit` will automatically remember your last opened folder across sessions!
+    *   **`Manage System Descriptions`**: Switches to the System Prompts tab to view, create, edit, or set active bot system descriptions.
     *   **`Create Folder`**: Prompts you for a folder name and creates a new directory inside your current working space.
     *   **`Delete Folder`**: Opens a dialog to permanently delete a folder and all of its contents (with safety confirmation).
     *   **`New File`**: Opens a prompt to enter a filename, creates an empty `.md` file, and opens it directly in the editor.
@@ -54,6 +57,6 @@ uv run m-edit
     *   **`Delete File`**: Opens a confirmation dialog to delete the currently open file from the disk permanently.
     *   **`Refresh Files`**: Refreshes the file list (useful if files were added or modified outside of the editor).
     *   **`Quit`**: Quits the application.
-    *   **`LLM Write`**: Opens a prompt dialog. Ask Ollama to write a new article or snippet for you.
+    *   **`LLM Write`**: Opens a prompt dialog. Ask Ollama to write a new article or snippet for you using the active system prompt.
     *   **`Compile with Ollama`**: Takes all the files you've checked in the file browser and asks Ollama to compile them into a single cohesive article.
-*   **`Tab` / `Shift+Tab`**: Cycle keyboard focus between the search bar, sort dropdown, file list, and the tabs.
+*   **`Tab` / `Shift+Tab`**: Cycle keyboard focus between the search bar, sort dropdown, system description dropdown, file list, and the tabs.

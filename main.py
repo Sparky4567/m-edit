@@ -1,6 +1,7 @@
 import os
 import shutil
 import asyncio
+import threading
 from pathlib import Path
 from datetime import datetime
 from typing import ClassVar
@@ -15,6 +16,38 @@ from textual.command import Provider, Hit
 
 from langchain_ollama import OllamaLLM
 
+import memory
+from Agentic_Module import Agentic_Module
+from workspace_docs import write_about_prompt, retrieve_workspace_chunks
+from tgram import TelegramBotRunner
+
+DEFAULT_SYSTEM_DESCRIPTIONS = {
+    "Default": {
+        "prompt": "You are a helpful AI assistant. Provide concise and accurate answers.",
+        "telegram_token": "",
+        "proactive_enabled": False,
+        "proactive_timer": 30
+    },
+    "Technical Writer": {
+        "prompt": "You are a professional technical documentation writer. Write clear, detailed, and structured Markdown content.",
+        "telegram_token": "",
+        "proactive_enabled": False,
+        "proactive_timer": 30
+    },
+    "Creative Writer": {
+        "prompt": "You are an engaging and creative writer. Craft compelling, expressive Markdown text.",
+        "telegram_token": "",
+        "proactive_enabled": False,
+        "proactive_timer": 30
+    },
+    "Code Explainer": {
+        "prompt": "You are an expert software engineer. Explain code and technical concepts clearly with code blocks and examples.",
+        "telegram_token": "",
+        "proactive_enabled": False,
+        "proactive_timer": 30
+    }
+}
+
 class MEditCommands(Provider):
     async def discover(self) -> None:
         yield Hit(
@@ -28,6 +61,48 @@ class MEditCommands(Provider):
             "Compile with Ollama",
             lambda: self.app.action_compile_with_ollama(),
             help="Compile selected notes using Ollama"
+        )
+        yield Hit(
+            1.0,
+            "Manage System Descriptions",
+            lambda: self.app.action_manage_system_descriptions(),
+            help="Manage custom bot system descriptions and Telegram tokens"
+        )
+        yield Hit(
+            1.0,
+            "Remember Memory (/remember)",
+            lambda: self.app.action_remember(),
+            help="Save a memory into memory.json"
+        )
+        yield Hit(
+            1.0,
+            "Fetch Note About (/fetch-note-about)",
+            lambda: self.app.action_fetch_note_about(),
+            help="Fetch and interpret information about a note topic"
+        )
+        yield Hit(
+            1.0,
+            "Search YouTube (/search-youtube-for)",
+            lambda: self.app.action_search_youtube(),
+            help="Search YouTube in default browser"
+        )
+        yield Hit(
+            1.0,
+            "Search Google (/search-google-for)",
+            lambda: self.app.action_search_google(),
+            help="Search Google in default browser"
+        )
+        yield Hit(
+            1.0,
+            "Search Giphy (/search-giphy-for)",
+            lambda: self.app.action_search_giphy(),
+            help="Search Giphy in default browser"
+        )
+        yield Hit(
+            1.0,
+            "Open Browser (/open-browser)",
+            lambda: self.app.action_open_browser(),
+            help="Open default web browser"
         )
         yield Hit(
             1.0,
@@ -81,95 +156,30 @@ class MEditCommands(Provider):
     async def search(self, query: str) -> None:
         matcher = self.matcher(query)
         
-        score = matcher.match("LLM Write")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("LLM Write"),
-                lambda: self.app.action_llm_write(),
-                help="Ask Ollama to write something new"
-            )
-            
-        score = matcher.match("Compile with Ollama")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Compile with Ollama"),
-                lambda: self.app.action_compile_with_ollama(),
-                help="Compile selected notes using Ollama"
-            )
-            
-        score = matcher.match("New File")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("New File"),
-                lambda: self.app.action_new_file(),
-                help="Create a new Markdown file"
-            )
+        commands = [
+            ("LLM Write", lambda: self.app.action_llm_write(), "Ask Ollama to write something new"),
+            ("Compile with Ollama", lambda: self.app.action_compile_with_ollama(), "Compile selected notes using Ollama"),
+            ("Manage System Descriptions", lambda: self.app.action_manage_system_descriptions(), "Manage custom bot system descriptions and Telegram tokens"),
+            ("Remember Memory (/remember)", lambda: self.app.action_remember(), "Save a memory into memory.json"),
+            ("Fetch Note About (/fetch-note-about)", lambda: self.app.action_fetch_note_about(), "Fetch and interpret information about a note topic"),
+            ("Search YouTube (/search-youtube-for)", lambda: self.app.action_search_youtube(), "Search YouTube in default browser"),
+            ("Search Google (/search-google-for)", lambda: self.app.action_search_google(), "Search Google in default browser"),
+            ("Search Giphy (/search-giphy-for)", lambda: self.app.action_search_giphy(), "Search Giphy in default browser"),
+            ("Open Browser (/open-browser)", lambda: self.app.action_open_browser(), "Open default web browser"),
+            ("New File", lambda: self.app.action_new_file(), "Create a new Markdown file"),
+            ("Create Folder", lambda: self.app.action_create_folder(), "Create a new folder in the current directory"),
+            ("Delete Folder", lambda: self.app.action_delete_folder(), "Delete a folder in the current directory"),
+            ("Save File", lambda: self.app.action_save_file(), "Save the currently open file"),
+            ("Change Directory", lambda: self.app.action_change_directory(), "Navigate to a different folder"),
+            ("Refresh Files", lambda: self.app.action_refresh_files(), "Refresh the file list"),
+            ("Delete File", lambda: self.app.action_delete_file(), "Delete the currently open file"),
+            ("Quit", lambda: self.app.action_quit(), "Quit the application"),
+        ]
 
-        score = matcher.match("Create Folder")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Create Folder"),
-                lambda: self.app.action_create_folder(),
-                help="Create a new folder in the current directory"
-            )
-
-        score = matcher.match("Delete Folder")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Delete Folder"),
-                lambda: self.app.action_delete_folder(),
-                help="Delete a folder in the current directory"
-            )
-
-        score = matcher.match("Save File")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Save File"),
-                lambda: self.app.action_save_file(),
-                help="Save the currently open file"
-            )
-
-        score = matcher.match("Change Directory")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Change Directory"),
-                lambda: self.app.action_change_directory(),
-                help="Navigate to a different folder"
-            )
-
-        score = matcher.match("Refresh Files")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Refresh Files"),
-                lambda: self.app.action_refresh_files(),
-                help="Refresh the file list"
-            )
-
-        score = matcher.match("Delete File")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Delete File"),
-                lambda: self.app.action_delete_file(),
-                help="Delete the currently open file"
-            )
-
-        score = matcher.match("Quit")
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight("Quit"),
-                lambda: self.app.action_quit(),
-                help="Quit the application"
-            )
+        for name, fn, help_text in commands:
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(score, matcher.highlight(name), fn, help=help_text)
 
 
 class NewFileScreen(ModalScreen[str]):
@@ -228,6 +238,162 @@ class NewFolderScreen(ModalScreen[str]):
             self.dismiss(event.value)
 
 
+class RememberScreen(ModalScreen[str]):
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def action_cancel(self) -> None:
+        self.dismiss("")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="modal_dialog"):
+            yield Label("Enter text to remember (/remember):", classes="modal_label")
+            yield Input(placeholder="e.g. My cat's name is Tom and he likes salmon", id="remember_input")
+            with Horizontal(classes="modal_buttons"):
+                yield Button("Save Memory", variant="primary", id="save_memory")
+                yield Button("Cancel", variant="error", id="cancel_memory")
+
+    def on_mount(self) -> None:
+        self.query_one("#remember_input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save_memory":
+            self.dismiss(self.query_one("#remember_input", Input).value)
+        else:
+            self.dismiss("")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "remember_input":
+            self.dismiss(event.value)
+
+
+class FetchNoteScreen(ModalScreen[str]):
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def action_cancel(self) -> None:
+        self.dismiss("")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="modal_dialog"):
+            yield Label("Fetch note about topic (e.g. my cat named 'tom'):", classes="modal_label")
+            yield Input(placeholder="e.g. my cat named tom", id="fetch_note_input")
+            with Horizontal(classes="modal_buttons"):
+                yield Button("Fetch & Interpret", variant="primary", id="submit_fetch")
+                yield Button("Cancel", variant="error", id="cancel_fetch")
+
+    def on_mount(self) -> None:
+        self.query_one("#fetch_note_input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit_fetch":
+            self.dismiss(self.query_one("#fetch_note_input", Input).value)
+        else:
+            self.dismiss("")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "fetch_note_input":
+            self.dismiss(event.value)
+
+
+class AgenticPromptScreen(ModalScreen[str]):
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, title: str, placeholder: str, **kwargs):
+        super().__init__(**kwargs)
+        self.title_str = title
+        self.placeholder_str = placeholder
+
+    def action_cancel(self) -> None:
+        self.dismiss("")
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="modal_dialog"):
+            yield Label(self.title_str, classes="modal_label")
+            yield Input(placeholder=self.placeholder_str, id="agentic_input")
+            with Horizontal(classes="modal_buttons"):
+                yield Button("Submit", variant="primary", id="submit_agentic")
+                yield Button("Cancel", variant="error", id="cancel_agentic")
+
+    def on_mount(self) -> None:
+        self.query_one("#agentic_input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit_agentic":
+            self.dismiss(self.query_one("#agentic_input", Input).value)
+        else:
+            self.dismiss("")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "agentic_input":
+            self.dismiss(event.value)
+
+
+class NewSystemDescScreen(ModalScreen[tuple[str, str, str, bool, int]]):
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="modal_dialog_large"):
+            yield Label("Create New System Description:", classes="modal_label")
+            yield Label("Name (e.g., Code Reviewer):", classes="modal_label")
+            yield Input(placeholder="Description name", id="new_sys_name")
+            yield Label("Telegram Bot Token (Optional):", classes="modal_label")
+            yield Input(placeholder="e.g. 123456789:ABCdef...", id="new_sys_token")
+            yield Checkbox("Enable Proactive Conversation", id="new_sys_proactive_cb")
+            yield Label("Proactive Timer (minutes):", classes="modal_label")
+            yield Input(placeholder="e.g. 30", id="new_sys_proactive_timer", value="30")
+            yield Label("System Prompt / Bot Behavior Instructions:", classes="modal_label")
+            yield TextArea(id="new_sys_text", language="markdown")
+            with Horizontal(classes="modal_buttons"):
+                yield Button("Create", variant="primary", id="create_sys")
+                yield Button("Cancel", variant="error", id="cancel_sys")
+
+    def on_mount(self) -> None:
+        self.query_one("#new_sys_name", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create_sys":
+            name = self.query_one("#new_sys_name", Input).value.strip()
+            token = self.query_one("#new_sys_token", Input).value.strip()
+            text = self.query_one("#new_sys_text", TextArea).text
+            proactive_enabled = self.query_one("#new_sys_proactive_cb", Checkbox).value
+            timer_val = self.query_one("#new_sys_proactive_timer", Input).value.strip()
+            try:
+                proactive_timer = int(timer_val)
+                if proactive_timer < 1:
+                    proactive_timer = 1
+            except ValueError:
+                proactive_timer = 30
+            self.dismiss((name, token, text, proactive_enabled, proactive_timer))
+        else:
+            self.dismiss(None)
+
+
+class DeleteSystemDescScreen(ModalScreen[bool]):
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def __init__(self, name: str, **kwargs):
+        super().__init__(**kwargs)
+        self.name = name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="modal_dialog"):
+            yield Label(f"Delete system description '{self.name}'?", classes="modal_label")
+            with Horizontal(classes="modal_buttons"):
+                yield Button("Yes, Delete", variant="error", id="confirm_delete_sys")
+                yield Button("Cancel", variant="primary", id="cancel_delete_sys")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm_delete_sys":
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
+
+
 class FolderItem(ListItem):
     def __init__(self, name: str, **kwargs):
         super().__init__(**kwargs)
@@ -237,7 +403,6 @@ class FolderItem(ListItem):
         yield Label(f"📁 {self.folder_name}", classes="file_label")
 
     def on_mount(self) -> None:
-        # Fixed typo dynamically or correctly below
         pass
 
 class SelectFolderScreen(ModalScreen[str]):
@@ -329,8 +494,8 @@ class LLMWriteScreen(ModalScreen[str]):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="modal_dialog"):
-            yield Label("What would you like Ollama to write?", classes="modal_label")
-            yield Input(placeholder="Enter your prompt here...", id="llm_prompt_input")
+            yield Label("What would you like Ollama to write / do?", classes="modal_label")
+            yield Input(placeholder="e.g. /remember Tom likes fish OR /fetch-note-about my cat OR write a summary", id="llm_prompt_input")
             with Horizontal(classes="modal_buttons"):
                 yield Button("Submit", variant="primary", id="submit_prompt")
                 yield Button("Cancel", variant="error", id="cancel_prompt")
@@ -347,6 +512,179 @@ class LLMWriteScreen(ModalScreen[str]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "llm_prompt_input":
             self.dismiss(event.value)
+
+
+class SystemDescriptionTab(Vertical):
+    def compose(self) -> ComposeResult:
+        with Vertical(id="sys_desc_container"):
+            yield Label("Custom System Descriptions & Telegram Bot Settings", classes="sys_desc_header modal_label")
+            with Horizontal(classes="sys_desc_buttons"):
+                yield Select(
+                    [(k, k) for k in DEFAULT_SYSTEM_DESCRIPTIONS.keys()],
+                    prompt="Select Description",
+                    id="system_tab_select",
+                    allow_blank=True
+                )
+                yield Button("New", variant="success", id="btn_new_sys_desc")
+                yield Button("Delete", variant="error", id="btn_delete_sys_desc")
+            yield Label("Description Name:", classes="modal_label")
+            yield Input(placeholder="System description name", id="sys_desc_name_input")
+            yield Label("Telegram Bot Token (Specific to this System Description):", classes="modal_label")
+            yield Input(placeholder="e.g. 123456789:ABCdef...", id="sys_desc_token_input")
+            yield Label("Telegram Status: Disabled (No Token)", id="sys_desc_telegram_status", classes="modal_label")
+            yield Checkbox("Enable Proactive Conversation", id="sys_desc_proactive_cb")
+            yield Label("Proactive Timer (minutes):", classes="modal_label")
+            yield Input(placeholder="e.g. 30", id="sys_desc_proactive_timer_input")
+            yield Label("Bot System Prompt / Instructions:", classes="modal_label")
+            yield TextArea(id="sys_desc_text_area", language="markdown")
+            with Horizontal(classes="sys_desc_buttons"):
+                yield Button("Save Changes", variant="primary", id="btn_save_sys_desc")
+                yield Button("Set as Active for Bot", variant="warning", id="btn_activate_sys_desc")
+
+    def on_mount(self) -> None:
+        self.refresh_options()
+
+    def refresh_options(self, selected_key: str | None = None) -> None:
+        try:
+            select = self.query_one("#system_tab_select", Select)
+            descs = self.app.system_descriptions
+            options = [(k, k) for k in descs.keys()]
+            select.set_options(options)
+            
+            target = selected_key or self.app.selected_system_desc
+            if target and target in descs:
+                select.value = target
+            elif options:
+                select.value = options[0][1]
+                
+            self.load_selected_into_fields()
+        except Exception:
+            pass
+
+    def load_selected_into_fields(self) -> None:
+        try:
+            select = self.query_one("#system_tab_select", Select)
+            val = select.value
+            if val and val != Select.BLANK and val in self.app.system_descriptions:
+                self.query_one("#sys_desc_name_input", Input).value = val
+                prompt = self.app.get_system_desc_prompt(val)
+                token = self.app.get_system_desc_token(val)
+                proactive_enabled = self.app.get_system_desc_proactive_enabled(val)
+                proactive_timer = self.app.get_system_desc_proactive_timer(val)
+
+                self.query_one("#sys_desc_token_input", Input).value = token
+                self.query_one("#sys_desc_text_area", TextArea).text = prompt
+                self.query_one("#sys_desc_proactive_cb", Checkbox).value = proactive_enabled
+                self.query_one("#sys_desc_proactive_timer_input", Input).value = str(proactive_timer)
+                
+                status_lbl = self.query_one("#sys_desc_telegram_status", Label)
+                if token:
+                    if self.app.telegram_runner and self.app.telegram_runner._running and self.app.telegram_runner.token == token:
+                        status_lbl.update("Telegram Bot Status: Connected & Running")
+                    else:
+                        status_lbl.update("Telegram Bot Status: Token Configured (Not Active)")
+                else:
+                    status_lbl.update("Telegram Bot Status: Disabled (No Token)")
+        except Exception:
+            pass
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "system_tab_select" and event.value != Select.BLANK:
+            self.load_selected_into_fields()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn_save_sys_desc":
+            name = self.query_one("#sys_desc_name_input", Input).value.strip()
+            token = self.query_one("#sys_desc_token_input", Input).value.strip()
+            text = self.query_one("#sys_desc_text_area", TextArea).text
+            proactive_enabled = self.query_one("#sys_desc_proactive_cb", Checkbox).value
+            timer_str = self.query_one("#sys_desc_proactive_timer_input", Input).value.strip()
+            try:
+                proactive_timer = int(timer_str)
+                if proactive_timer < 1:
+                    proactive_timer = 1
+            except ValueError:
+                proactive_timer = 30
+
+            if not name:
+                self.app.notify("Description name cannot be empty!", severity="error")
+                return
+            old_selected = self.query_one("#system_tab_select", Select).value
+            if old_selected and old_selected != Select.BLANK and old_selected != name and old_selected in self.app.system_descriptions:
+                del self.app.system_descriptions[old_selected]
+            
+            self.app.set_system_desc(
+                name,
+                prompt=text,
+                token=token,
+                proactive_enabled=proactive_enabled,
+                proactive_timer=proactive_timer
+            )
+            if self.app.selected_system_desc == old_selected or not self.app.selected_system_desc:
+                self.app.selected_system_desc = name
+                
+            self.app.update_system_select_options(selected_name=name)
+            self.refresh_options(selected_key=name)
+            self.app.save_state()
+            self.app.notify(f"Saved system description '{name}'")
+            self.app.run_worker(self.app.sync_telegram_bot())
+
+        elif event.button.id == "btn_activate_sys_desc":
+            name = self.query_one("#sys_desc_name_input", Input).value.strip()
+            if name in self.app.system_descriptions:
+                self.app.selected_system_desc = name
+                self.app.update_system_select_options(selected_name=name)
+                self.app.save_state()
+                self.app.notify(f"Active system description set to '{name}'")
+                self.app.run_worker(self.app.sync_telegram_bot())
+            else:
+                self.app.notify("Please save the description before activating.", severity="warning")
+
+        elif event.button.id == "btn_new_sys_desc":
+            def check_new(result: tuple[str, str, str, bool, int] | None):
+                if result:
+                    name, token, text, proactive_enabled, proactive_timer = result
+                    name = name.strip()
+                    if not name:
+                        self.app.notify("Description name cannot be empty!", severity="error")
+                        return
+                    self.app.set_system_desc(
+                        name,
+                        prompt=text,
+                        token=token,
+                        proactive_enabled=proactive_enabled,
+                        proactive_timer=proactive_timer
+                    )
+                    self.app.selected_system_desc = name
+                    self.app.update_system_select_options(selected_name=name)
+                    self.refresh_options(selected_key=name)
+                    self.app.save_state()
+                    self.app.notify(f"Created system description '{name}'")
+                    self.app.run_worker(self.app.sync_telegram_bot())
+                    
+            self.app.push_screen(NewSystemDescScreen(), check_new)
+
+        elif event.button.id == "btn_delete_sys_desc":
+            current_val = self.query_one("#system_tab_select", Select).value
+            if not current_val or current_val == Select.BLANK or current_val not in self.app.system_descriptions:
+                self.app.notify("No system description selected to delete.", severity="warning")
+                return
+                
+            def check_delete(confirm: bool):
+                if confirm and current_val in self.app.system_descriptions:
+                    del self.app.system_descriptions[current_val]
+                    if not self.app.system_descriptions:
+                        self.app.set_system_desc("Default", prompt=DEFAULT_SYSTEM_DESCRIPTIONS["Default"]["prompt"], token="")
+                    
+                    new_active = next(iter(self.app.system_descriptions.keys()))
+                    self.app.selected_system_desc = new_active
+                    self.app.update_system_select_options(selected_name=new_active)
+                    self.refresh_options(selected_key=new_active)
+                    self.app.save_state()
+                    self.app.notify(f"Deleted system description '{current_val}'")
+                    self.app.run_worker(self.app.sync_telegram_bot())
+
+            self.app.push_screen(DeleteSystemDescScreen(current_val), check_delete)
 
 
 class DirItem(ListItem):
@@ -446,6 +784,7 @@ class DirectoryBrowserTab(Vertical):
             self.app.load_files()
             self.app.notify(f"Changed working directory to {self.current_path}")
             self.app.query_one("#tabs", TabbedContent).active = "preview_tab"
+            self.app.run_worker(self.app.sync_telegram_bot())
 
 class FileItem(ListItem):
     def __init__(self, path: Path, abs_path: Path = None, **kwargs):
@@ -473,7 +812,6 @@ class FileListView(ListView):
             checkbox.value = not checkbox.value
 
     def action_select_cursor(self) -> None:
-        # Bypass the default selection mechanism which might be blocked by Checkbox
         if self.highlighted_child:
             self.app.open_file(self.highlighted_child.abs_path)
 
@@ -497,10 +835,24 @@ class FileBrowser(Vertical):
             id="model_select",
             allow_blank=True
         )
+        yield Select(
+            [(k, k) for k in DEFAULT_SYSTEM_DESCRIPTIONS.keys()],
+            prompt="System Description...",
+            id="system_select",
+            allow_blank=True
+        )
         yield FileListView(id="file_list")
 
 class MEditApp(App):
     TITLE = "m-edit"
+
+    def safe_call_from_thread(self, callback, *args, **kwargs):
+        if threading.get_ident() == getattr(self, "_thread_id", None):
+            return callback(*args, **kwargs)
+        try:
+            return self.call_from_thread(callback, *args, **kwargs)
+        except RuntimeError:
+            return callback(*args, **kwargs)
     CSS = """
     Screen {
         layout: horizontal;
@@ -569,6 +921,36 @@ class MEditApp(App):
     .modal_buttons Button {
         margin: 0 1;
     }
+
+    SystemDescriptionTab {
+        height: 1fr;
+        overflow-y: auto;
+    }
+
+    #sys_desc_container {
+        padding: 1 2;
+        height: auto;
+    }
+
+    .sys_desc_header {
+        margin-bottom: 1;
+    }
+
+    .sys_desc_buttons {
+        margin-top: 1;
+        margin-bottom: 1;
+        height: auto;
+    }
+
+    .sys_desc_buttons Button {
+        margin-right: 1;
+    }
+
+    #sys_desc_text_area {
+        height: 15;
+        min-height: 10;
+        margin-top: 1;
+    }
     """
     
     COMMANDS: ClassVar[set[type[Provider] | Provider]] = App.COMMANDS | {MEditCommands}
@@ -579,7 +961,65 @@ class MEditApp(App):
 
     current_file = reactive(None)
     working_directory = reactive(str(Path.cwd()))
-    
+    selected_system_desc = "Default"
+    system_descriptions = DEFAULT_SYSTEM_DESCRIPTIONS.copy()
+    telegram_runner = None
+
+    def get_system_desc_prompt(self, name: str) -> str:
+        val = self.system_descriptions.get(name, "")
+        if isinstance(val, dict):
+            return val.get("prompt", "")
+        return str(val)
+
+    def get_system_desc_token(self, name: str) -> str:
+        val = self.system_descriptions.get(name, "")
+        if isinstance(val, dict):
+            return val.get("telegram_token", "")
+        return ""
+
+    def get_system_desc_proactive_enabled(self, name: str) -> bool:
+        val = self.system_descriptions.get(name, "")
+        if isinstance(val, dict):
+            return bool(val.get("proactive_enabled", False))
+        return False
+
+    def get_system_desc_proactive_timer(self, name: str) -> int:
+        val = self.system_descriptions.get(name, "")
+        if isinstance(val, dict):
+            try:
+                return int(val.get("proactive_timer", 30))
+            except (ValueError, TypeError):
+                return 30
+        return 30
+
+    def get_system_desc_last_chat_id(self, name: str) -> int | None:
+        val = self.system_descriptions.get(name, "")
+        if isinstance(val, dict):
+            return val.get("last_chat_id", None)
+        return None
+
+    def set_system_desc(
+        self,
+        name: str,
+        prompt: str,
+        token: str = "",
+        proactive_enabled: bool = False,
+        proactive_timer: int = 30,
+        last_chat_id: int | None = None
+    ):
+        existing = self.system_descriptions.get(name, {})
+        if not isinstance(existing, dict):
+            existing = {}
+        if last_chat_id is None:
+            last_chat_id = existing.get("last_chat_id", None)
+        self.system_descriptions[name] = {
+            "prompt": prompt,
+            "telegram_token": token,
+            "proactive_enabled": proactive_enabled,
+            "proactive_timer": proactive_timer,
+            "last_chat_id": last_chat_id
+        }
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
@@ -590,6 +1030,8 @@ class MEditApp(App):
                         yield Markdown("Select a file to preview or edit. Use Ctrl+P for AI commands.", id="markdown_viewer")
                     with TabPane("Edit", id="edit_tab"):
                         yield TextArea(id="text_editor", language="markdown")
+                    with TabPane("System Prompts", id="system_tab"):
+                        yield SystemDescriptionTab()
                     with TabPane("Folders", id="folders_tab"):
                         yield DirectoryBrowserTab()
         yield Footer()
@@ -606,14 +1048,109 @@ class MEditApp(App):
         except Exception:
             pass
             
+        self.update_system_select_options(selected_name=self.selected_system_desc)
         self.load_files(search_term=search_val, sort_by=sort_val)
         self.run_worker(self.load_ollama_models())
+        self.run_worker(self.sync_telegram_bot())
+
+    async def sync_telegram_bot(self) -> None:
+        active_name = self.selected_system_desc
+        token = self.get_system_desc_token(active_name)
+        prompt = self.get_system_desc_prompt(active_name)
+        proactive_enabled = self.get_system_desc_proactive_enabled(active_name)
+        proactive_timer = self.get_system_desc_proactive_timer(active_name)
+        last_chat_id = self.get_system_desc_last_chat_id(active_name)
+
+        model_name = "llama3"
+        try:
+            model_val = self.query_one("#model_select", Select).value
+            if model_val and model_val != Select.BLANK:
+                model_name = model_val
+        except Exception:
+            pass
+
+        if self.telegram_runner:
+            if self.telegram_runner.token == token and self.telegram_runner._running:
+                self.telegram_runner.system_prompt = prompt
+                self.telegram_runner.working_dir = self.working_directory
+                self.telegram_runner.model_name = model_name
+                self.telegram_runner.update_proactive_settings(proactive_enabled, proactive_timer)
+                if last_chat_id and not self.telegram_runner.last_chat_id:
+                    self.telegram_runner.last_chat_id = last_chat_id
+                return
+            else:
+                await self.telegram_runner.stop()
+                self.telegram_runner = None
+
+        if token:
+            def notify_cb(msg: str):
+                self.safe_call_from_thread(self.notify, msg)
+
+            def chat_id_cb(chat_id: int):
+                active = self.selected_system_desc
+                if active in self.system_descriptions and isinstance(self.system_descriptions[active], dict):
+                    self.system_descriptions[active]["last_chat_id"] = chat_id
+                    self.safe_call_from_thread(self.save_state)
+
+            runner = TelegramBotRunner(
+                token=token,
+                system_prompt=prompt,
+                model_name=model_name,
+                working_dir=self.working_directory,
+                notify_cb=notify_cb,
+                proactive_enabled=proactive_enabled,
+                proactive_timer=proactive_timer,
+                last_chat_id=last_chat_id,
+                chat_id_cb=chat_id_cb
+            )
+            self.telegram_runner = runner
+            started = await runner.start()
+            if started:
+                self.notify(f"Telegram bot connected for '{active_name}'")
+            else:
+                self.notify("Telegram bot token failed to connect.", severity="error")
+
+            try:
+                sys_tab = self.query_one(SystemDescriptionTab)
+                sys_tab.load_selected_into_fields()
+            except Exception:
+                pass
+
+    def update_system_select_options(self, selected_name: str | None = None) -> None:
+        try:
+            system_select = self.query_one("#system_select", Select)
+            options = [(name, name) for name in self.system_descriptions.keys()]
+            system_select.set_options(options)
+            target = selected_name or self.selected_system_desc
+            if target and target in self.system_descriptions:
+                system_select.value = target
+            elif options:
+                system_select.value = options[0][1]
+                self.selected_system_desc = options[0][1]
+        except Exception:
+            pass
 
     def load_state(self) -> None:
         import platformdirs
         import json
         config_dir = Path(platformdirs.user_data_dir("m-edit"))
         config_file = config_dir / "config.json"
+        
+        if not config_file.exists():
+            try:
+                config_dir.mkdir(parents=True, exist_ok=True)
+                default_data = {
+                    "working_directory": str(Path.cwd()),
+                    "search_term": "",
+                    "sort_by": "name",
+                    "selected_model": "",
+                    "selected_system_desc": "Default",
+                    "system_descriptions": DEFAULT_SYSTEM_DESCRIPTIONS
+                }
+                config_file.write_text(json.dumps(default_data, indent=2))
+            except Exception:
+                pass
+
         if config_file.exists():
             try:
                 data = json.loads(config_file.read_text())
@@ -622,12 +1159,25 @@ class MEditApp(App):
                     self.working_directory = saved_dir
                 self._initial_search = data.get("search_term", "")
                 self._initial_sort = data.get("sort_by", "name")
+                self._initial_model = data.get("selected_model", "")
+                self.selected_system_desc = data.get("selected_system_desc", "Default")
+                descs = data.get("system_descriptions")
+                if isinstance(descs, dict) and descs:
+                    self.system_descriptions = descs
+                else:
+                    self.system_descriptions = DEFAULT_SYSTEM_DESCRIPTIONS.copy()
             except Exception:
                 self._initial_search = ""
                 self._initial_sort = "name"
+                self._initial_model = ""
+                self.selected_system_desc = "Default"
+                self.system_descriptions = DEFAULT_SYSTEM_DESCRIPTIONS.copy()
         else:
             self._initial_search = ""
             self._initial_sort = "name"
+            self._initial_model = ""
+            self.selected_system_desc = "Default"
+            self.system_descriptions = DEFAULT_SYSTEM_DESCRIPTIONS.copy()
 
     def save_state(self) -> None:
         import platformdirs
@@ -645,13 +1195,29 @@ class MEditApp(App):
             sort_val = self.query_one("#sort_select", Select).value
         except Exception:
             sort_val = getattr(self, "_initial_sort", "name")
+
+        try:
+            model_val = self.query_one("#model_select", Select).value
+        except Exception:
+            model_val = getattr(self, "_initial_model", "")
+
+        try:
+            sys_val = self.query_one("#system_select", Select).value
+            if sys_val != Select.BLANK:
+                self.selected_system_desc = sys_val
+        except Exception:
+            pass
             
         try:
-            config_file.write_text(json.dumps({
+            config_data = {
                 "working_directory": self.working_directory,
                 "search_term": search_val,
-                "sort_by": sort_val
-            }))
+                "sort_by": sort_val,
+                "selected_model": model_val if model_val != Select.BLANK else "",
+                "selected_system_desc": self.selected_system_desc,
+                "system_descriptions": self.system_descriptions
+            }
+            config_file.write_text(json.dumps(config_data, indent=2))
         except Exception as e:
             self.notify(f"Error saving state: {e}", severity="warning")
 
@@ -671,7 +1237,12 @@ class MEditApp(App):
             
         select = self.query_one("#model_select", Select)
         select.set_options(models)
-        if models:
+        
+        saved_model = getattr(self, "_initial_model", None)
+        model_values = [m[1] for m in models]
+        if saved_model and saved_model in model_values:
+            select.value = saved_model
+        elif models:
             select.value = models[0][1]
 
     _search_task_id = 0
@@ -728,7 +1299,6 @@ class MEditApp(App):
                     items.append(FileItem(path=rel_path, abs_path=p))
                 except ValueError:
                     items.append(FileItem(path=p, abs_path=p))
-            # Append all items without blocking too much
             for item in items:
                 file_list.append(item)
 
@@ -743,6 +1313,19 @@ class MEditApp(App):
             search_val = self.query_one("#search_input", Input).value
             self.load_files(search_term=search_val, sort_by=event.value)
             self.save_state()
+        elif event.select.id == "model_select":
+            self.save_state()
+            self.run_worker(self.sync_telegram_bot())
+        elif event.select.id == "system_select":
+            if event.value != Select.BLANK:
+                self.selected_system_desc = event.value
+                try:
+                    sys_tab = self.query_one(SystemDescriptionTab)
+                    sys_tab.refresh_options(selected_key=event.value)
+                except Exception:
+                    pass
+                self.save_state()
+                self.run_worker(self.sync_telegram_bot())
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         pass
@@ -767,7 +1350,6 @@ class MEditApp(App):
             except Exception as e:
                 self.notify(f"Error saving file: {e}", severity="error")
         else:
-            # Generate a new file name based on time
             new_file_path = Path(f"ai_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md")
             try:
                 new_file_path.write_text(content)
@@ -787,6 +1369,52 @@ class MEditApp(App):
     def action_change_directory(self) -> None:
         self.query_one("#tabs", TabbedContent).active = "folders_tab"
         self.query_one("#dir_search_input", Input).focus()
+
+    def action_manage_system_descriptions(self) -> None:
+        self.query_one("#tabs", TabbedContent).active = "system_tab"
+
+    def action_remember(self) -> None:
+        def save_mem(text: str | None) -> None:
+            if text and text.strip():
+                memory.remember(text.strip())
+                self.notify(f"Saved memory: {text.strip()}")
+        self.push_screen(RememberScreen(), save_mem)
+
+    def action_fetch_note_about(self) -> None:
+        def do_fetch(topic: str | None) -> None:
+            if topic and topic.strip():
+                model_name = self.query_one("#model_select", Select).value
+                self.run_worker(self.generate_llm_content(f"/fetch-note-about {topic.strip()}", model_name), thread=True)
+        self.push_screen(FetchNoteScreen(), do_fetch)
+
+    def action_search_youtube(self) -> None:
+        def do_search(query: str | None) -> None:
+            if query and query.strip():
+                agentic = Agentic_Module()
+                status, msg = agentic.select_tool(f"search youtube for {query.strip()}")
+                self.notify(msg or f"Searching YouTube for {query}")
+        self.push_screen(AgenticPromptScreen("Search YouTube for:", "e.g. cute cats"), do_search)
+
+    def action_search_google(self) -> None:
+        def do_search(query: str | None) -> None:
+            if query and query.strip():
+                agentic = Agentic_Module()
+                status, msg = agentic.select_tool(f"search google for {query.strip()}")
+                self.notify(msg or f"Searching Google for {query}")
+        self.push_screen(AgenticPromptScreen("Search Google for:", "e.g. python textual docs"), do_search)
+
+    def action_search_giphy(self) -> None:
+        def do_search(query: str | None) -> None:
+            if query and query.strip():
+                agentic = Agentic_Module()
+                status, msg = agentic.select_tool(f"search giphy for {query.strip()}")
+                self.notify(msg or f"Searching Giphy for {query}")
+        self.push_screen(AgenticPromptScreen("Search Giphy for:", "e.g. happy cat"), do_search)
+
+    def action_open_browser(self) -> None:
+        agentic = Agentic_Module()
+        status, msg = agentic.select_tool("open browser")
+        self.notify(msg or "Opening web browser")
 
     def action_delete_file(self) -> None:
         if not self.current_file:
@@ -882,28 +1510,103 @@ class MEditApp(App):
         self.run_worker(self.compile_files(selected_files, model_name), thread=True)
 
     async def generate_llm_content(self, prompt: str, model_name: str) -> None:
-        self.call_from_thread(self.notify, f"Generating with {model_name}...", timeout=3)
+        self.safe_call_from_thread(self.notify, f"Processing with {model_name}...", timeout=3)
         try:
+            # 1. Check for /remember command
+            if prompt.startswith("/remember"):
+                mem_text = prompt.removeprefix("/remember").strip()
+                if mem_text:
+                    memory.remember(mem_text)
+                    self.safe_call_from_thread(self.notify, f"Memory saved: {mem_text}")
+                    self.safe_call_from_thread(self.show_generated_content, f"**Memory Saved:**\n{mem_text}")
+                    return
+
+            # 2. Check for Agentic module tools
+            cleaned_agentic_prompt = prompt
+            if prompt.startswith("/search-youtube-for"):
+                cleaned_agentic_prompt = "search youtube for " + prompt.removeprefix("/search-youtube-for").strip()
+            elif prompt.startswith("/search-google-for"):
+                cleaned_agentic_prompt = "search google for " + prompt.removeprefix("/search-google-for").strip()
+            elif prompt.startswith("/search-giphy-for"):
+                cleaned_agentic_prompt = "search giphy for " + prompt.removeprefix("/search-giphy-for").strip()
+            elif prompt.startswith("/open-browser"):
+                cleaned_agentic_prompt = "open browser"
+
+            agentic = Agentic_Module()
+            status, agentic_msg = agentic.select_tool(cleaned_agentic_prompt)
+            if status and agentic_msg:
+                self.safe_call_from_thread(self.notify, agentic_msg)
+                self.safe_call_from_thread(self.show_generated_content, f"**Agentic Action:** {agentic_msg}")
+                return
+
+            # 3. Check for /fetch-note-about or /write-about
+            note_prompt = None
+            if prompt.startswith("/fetch-note-about ") or prompt.startswith("/write-about "):
+                if prompt.startswith("/fetch-note-about "):
+                    topic = prompt.removeprefix("/fetch-note-about ").strip()
+                else:
+                    topic = prompt.removeprefix("/write-about ").strip()
+
+                llm_p, _ = write_about_prompt(topic, self.working_directory)
+                if llm_p:
+                    note_prompt = llm_p
+                else:
+                    self.safe_call_from_thread(self.notify, f"No notes found for '{topic}'", severity="warning")
+                    self.safe_call_from_thread(self.show_generated_content, f"No notes found in workspace for topic '{topic}'.")
+                    return
+
+            # 4. Memory retrieval & note context for Ollama query
+            actual_query = prompt
+            if prompt.startswith("/fetch-note-about "):
+                actual_query = prompt.removeprefix("/fetch-note-about ").strip()
+            elif prompt.startswith("/write-about "):
+                actual_query = prompt.removeprefix("/write-about ").strip()
+
+            memories = memory.retrieve_memories(actual_query, limit=5)
+            workspace_chunks = retrieve_workspace_chunks(actual_query, limit=5)
+
+            system_text = self.get_system_desc_prompt(self.selected_system_desc)
+            if memories:
+                mem_block = "\n".join([f"- {m}" for m in memories])
+                system_text += f"\n\nRelevant past memories:\n{mem_block}"
+            if workspace_chunks:
+                chunk_block = "\n\n".join([f"[{c['filename']}]\n{c['text']}" for c in workspace_chunks])
+                system_text += f"\n\nRelevant workspace note excerpts:\n{chunk_block}"
+
+            if system_text:
+                full_prompt = f"System Instructions:\n{system_text}\n\nUser Request:\n{note_prompt or prompt}"
+            else:
+                full_prompt = note_prompt or prompt
+                
             llm = OllamaLLM(model=model_name)
-            response = await asyncio.to_thread(llm.invoke, prompt)
-            self.call_from_thread(self.show_generated_content, response)
+            response = await asyncio.to_thread(llm.invoke, full_prompt)
+            self.safe_call_from_thread(self.show_generated_content, response)
         except Exception as e:
-            self.call_from_thread(self.notify, f"LLM Error: {e}", severity="error")
+            self.safe_call_from_thread(self.notify, f"LLM Error: {e}", severity="error")
 
     async def compile_files(self, files: list[Path], model_name: str) -> None:
-        self.call_from_thread(self.notify, f"Compiling {len(files)} files with {model_name}...", timeout=3)
+        self.safe_call_from_thread(self.notify, f"Compiling {len(files)} files with {model_name}...", timeout=3)
         try:
             content = ""
             for p in files:
                 content += f"\n\n--- File: {p} ---\n{p.read_text(errors='ignore')}"
                 
-            prompt = f"Compile the following notes into a cohesive article. Write only the article content in Markdown format:\n{content}"
+            system_text = self.get_system_desc_prompt(self.selected_system_desc)
+            memories = memory.retrieve_memories("compile notes article", limit=5)
+            if memories:
+                mem_block = "\n".join([f"- {m}" for m in memories])
+                system_text += f"\n\nRelevant past memories:\n{mem_block}"
+
+            if system_text:
+                prompt = f"System Instructions:\n{system_text}\n\nCompile the following notes into a cohesive article. Write only the article content in Markdown format:\n{content}"
+            else:
+                prompt = f"Compile the following notes into a cohesive article. Write only the article content in Markdown format:\n{content}"
             
             llm = OllamaLLM(model=model_name)
             response = await asyncio.to_thread(llm.invoke, prompt)
-            self.call_from_thread(self.show_generated_content, response)
+            self.safe_call_from_thread(self.show_generated_content, response)
         except Exception as e:
-            self.call_from_thread(self.notify, f"LLM Error: {e}", severity="error")
+            self.safe_call_from_thread(self.notify, f"LLM Error: {e}", severity="error")
 
     def show_generated_content(self, text: str) -> None:
         self.current_file = None
