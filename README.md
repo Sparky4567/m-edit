@@ -60,3 +60,21 @@ uv run m-edit
     *   **`LLM Write`**: Opens a prompt dialog. Ask Ollama to write a new article or snippet for you using the active system prompt.
     *   **`Compile with Ollama`**: Takes all the files you've checked in the file browser and asks Ollama to compile them into a single cohesive article.
 *   **`Tab` / `Shift+Tab`**: Cycle keyboard focus between the search bar, sort dropdown, system description dropdown, file list, and the tabs.
+
+### Slash Commands
+
+You can use specialized slash commands directly in the **LLM Write** prompt modal or via the Telegram bot:
+
+*   **`/remember <text>`**: Saves a memory entry into `memory.json` for persistence across sessions.
+*   **`/fetch-note-about <topic>`** or **`/write-about <topic>`**: Searches your workspace Markdown files for content relevant to `<topic>` and provides context to Ollama for answer generation.
+*   **`/search-youtube-for <query>`**: Automatically opens your default browser and searches YouTube for the specified query.
+*   **`/search-google-for <query>`**: Opens your default browser and searches Google.
+*   **`/search-giphy-for <query>`**: Opens your default browser to search Giphy.
+*   **`/open-browser`**: Launches your system's default web browser.
+
+### Telegram Bot Integration
+
+`m-edit` supports controlling your assistant remotely via Telegram:
+*   Configure your Telegram Bot token inside the **System Prompts** tab.
+*   Interact with your assistant remotely using standard messages or any of the **Slash Commands** listed above.
+
